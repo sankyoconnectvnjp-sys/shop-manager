@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+  <title>Tổng Quan</title>
+  <link rel="stylesheet" href="../css/main.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- TOP BAR -->
+  <div class="top-bar">
+    <div class="top-bar-left">
+      <div class="top-bar-logo">🛍️</div>
+      <div class="top-bar-title">Cửa Hàng <span>Của Mẹ</span></div>
+    </div>
+    <button class="btn-logout" id="btnLogout">Đăng xuất</button>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="page-content">
+    <div style="margin-bottom:20px;">
+      <div style="font-size:13px;color:var(--text2);">Xin chào 👋</div>
+      <div style="font-size:20px;font-weight:800;" id="dateToday"></div>
+    </div>
+
+    <!-- KPI -->
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-icon">💰</div>
+        <div class="kpi-label">Doanh thu hôm nay</div>
+        <div class="kpi-val" id="kpiToday" style="color:var(--primary)">...</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">📦</div>
+        <div class="kpi-label">Đơn hôm nay</div>
+        <div class="kpi-val" id="kpiOrders" style="color:var(--blue)">...</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">💵</div>
+        <div class="kpi-label">Doanh thu tháng</div>
+        <div class="kpi-val" id="kpiMonth" style="color:var(--green)">...</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">⚠️</div>
+        <div class="kpi-label">Công nợ chưa thu</div>
+        <div class="kpi-val" id="kpiDebt" style="color:var(--red)">...</div>
+      </div>
+    </div>
+
+    <!-- QUICK ACTIONS -->
+    <div class="card">
+      <div class="section-title" style="margin-bottom:16px;">Thao tác nhanh</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <a href="sales.html" style="text-decoration:none;">
+          <button class="btn btn-primary btn-full" style="border-radius:12px;padding:14px;">
+            🛒 Bán hàng
+          </button>
+        </a>
+        <a href="inventory.html" style="text-decoration:none;">
+          <button class="btn btn-full" style="background:#eff6ff;color:var(--blue);border-radius:12px;padding:14px;font-weight:700;">
+            📦 Nhập hàng
+          </button>
+        </a>
+        <a href="debt.html" style="text-decoration:none;">
+          <button class="btn btn-full" style="background:#fef2f2;color:var(--red);border-radius:12px;padding:14px;font-weight:700;">
+            📋 Ghi nợ
+          </button>
+        </a>
+        <a href="report.html" style="text-decoration:none;">
+          <button class="btn btn-full" style="background:#f0fdf4;color:var(--green);border-radius:12px;padding:14px;font-weight:700;">
+            📊 Báo cáo
+          </button>
+        </a>
+      </div>
+    </div>
+
+    <!-- RECENT SALES -->
+    <div class="section-header">
+      <div class="section-title">Đơn bán gần đây</div>
+      <a href="sales.html" style="font-size:13px;color:var(--primary);font-weight:600;text-decoration:none;">Xem tất cả</a>
+    </div>
+    <div id="recentSales"><div class="loading">Đang tải...</div></div>
+
+    <!-- LOW STOCK -->
+    <div class="section-header" style="margin-top:8px;">
+      <div class="section-title">⚠️ Hàng sắp hết</div>
+      <a href="inventory.html" style="font-size:13px;color:var(--primary);font-weight:600;text-decoration:none;">Xem kho</a>
+    </div>
+    <div id="lowStock"><div class="loading">Đang tải...</div></div>
+  </div>
+
+  <!-- BOTTOM NAV -->
+  <nav class="bottom-nav">
+    <a class="nav-item active" href="dashboard.html" data-page="dashboard">
+      <span class="nav-icon">🏠</span><span class="nav-label">Tổng quan</span>
+    </a>
+    <a class="nav-item" href="sales.html" data-page="sales">
+      <span class="nav-icon">🛒</span><span class="nav-label">Bán hàng</span>
+    </a>
+    <a class="nav-item" href="inventory.html" data-page="inventory">
+      <span class="nav-icon">📦</span><span class="nav-label">Kho hàng</span>
+    </a>
+    <a class="nav-item" href="debt.html" data-page="debt">
+      <span class="nav-icon">📋</span><span class="nav-label">Công nợ</span>
+    </a>
+    <a class="nav-item" href="report.html" data-page="report">
+      <span class="nav-icon">📊</span><span class="nav-label">Báo cáo</span>
+    </a>
+  </nav>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+  import { getFirestore, collection, query, where, orderBy, limit, getDocs, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import FIREBASE_CONFIG from "../js/firebase-config.js";
+  import { fmt, fmtDateTime } from "../js/utils.js";
+
+  const app = initializeApp(FIREBASE_CONFIG);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  onAuthStateChanged(auth, user => {
+    if (!user) { window.location.href = "../index.html"; return; }
+    loadDashboard();
+  });
+
+  document.getElementById("btnLogout").addEventListener("click", () => signOut(auth).then(() => window.location.href = "../index.html"));
+
+  // Today date
+  const now = new Date();
+  document.getElementById("dateToday").textContent = now.toLocaleDateString("vi-VN", { weekday:"long", day:"2-digit", month:"2-digit", year:"numeric" });
+
+  async function loadDashboard() {
+    const todayStr = now.toISOString().split("T")[0];
+    const monthStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+
+    // Doanh thu hôm nay
+    const qToday = query(collection(db,"orders"), where("date","==",todayStr));
+    const snapToday = await getDocs(qToday);
+    let todayRev = 0, todayOrders = 0;
+    snapToday.forEach(d => { todayRev += d.data().total || 0; todayOrders++; });
+    document.getElementById("kpiToday").textContent = fmt(todayRev);
+    document.getElementById("kpiOrders").textContent = todayOrders + " đơn";
+
+    // Doanh thu tháng
+    const qMonth = query(collection(db,"orders"), where("date",">=", monthStr+"-01"));
+    const snapMonth = await getDocs(qMonth);
+    let monthRev = 0;
+    snapMonth.forEach(d => { monthRev += d.data().total || 0; });
+    document.getElementById("kpiMonth").textContent = fmt(monthRev);
+
+    // Công nợ
+    const qDebt = query(collection(db,"debts"), where("status","==","chua_thu"));
+    const snapDebt = await getDocs(qDebt);
+    let totalDebt = 0;
+    snapDebt.forEach(d => { totalDebt += d.data().amount || 0; });
+    document.getElementById("kpiDebt").textContent = fmt(totalDebt);
+
+    // Recent sales
+    const qSales = query(collection(db,"orders"), orderBy("createdAt","desc"), limit(5));
+    const snapSales = await getDocs(qSales);
+    const salesEl = document.getElementById("recentSales");
+    if (snapSales.empty) {
+      salesEl.innerHTML = `<div class="empty-state"><div class="empty-icon">🛒</div><div class="empty-text">Chưa có đơn bán nào</div></div>`;
+    } else {
+      salesEl.innerHTML = "";
+      snapSales.forEach(d => {
+        const o = d.data();
+        salesEl.innerHTML += `
+          <div class="list-item">
+            <div class="list-icon bg-orange">🛒</div>
+            <div class="list-info">
+              <div class="list-name">${o.customerName || "Khách lẻ"}</div>
+              <div class="list-sub">${fmtDateTime(o.createdAt)} • ${o.items?.length || 0} sản phẩm</div>
+            </div>
+            <div class="list-right">
+              <div class="list-amount text-green">+${fmt(o.total)}</div>
+              <div class="list-date"><span class="tag tag-${o.paymentStatus === "paid" ? "green" : "orange"}">${o.paymentStatus === "paid" ? "Đã thu" : "Còn nợ"}</span></div>
+            </div>
+          </div>`;
+      });
+    }
+
+    // Low stock
+    const qInv = query(collection(db,"inventory"), where("quantity","<=",5), orderBy("quantity","asc"), limit(5));
+    const snapInv = await getDocs(qInv);
+    const invEl = document.getElementById("lowStock");
+    if (snapInv.empty) {
+      invEl.innerHTML = `<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-text">Kho hàng đầy đủ</div></div>`;
+    } else {
+      invEl.innerHTML = "";
+      snapInv.forEach(d => {
+        const p = d.data();
+        invEl.innerHTML += `
+          <div class="list-item">
+            <div class="list-icon bg-red">📦</div>
+            <div class="list-info">
+              <div class="list-name">${p.name}</div>
+              <div class="list-sub">${p.category || "—"}</div>
+            </div>
+            <div class="list-right">
+              <div class="list-amount text-red">Còn ${p.quantity}</div>
+            </div>
+          </div>`;
+      });
+    }
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+  <title>Báo Cáo</title>
+  <link rel="stylesheet" href="../css/main.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <style>
+    .bar-chart { margin-top: 12px; }
+    .bar-row { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+    .bar-label { width:60px; font-size:12px; font-weight:600; color:var(--text2); text-align:right; }
+    .bar-wrap { flex:1; background:var(--border); border-radius:6px; height:28px; overflow:hidden; position:relative; }
+    .bar-fill { height:100%; background:linear-gradient(90deg,var(--primary),var(--accent)); border-radius:6px; transition:width .5s ease; display:flex; align-items:center; justify-content:flex-end; padding-right:8px; }
+    .bar-val { font-size:11px; font-weight:700; color:white; white-space:nowrap; }
+    .period-btn { padding:8px 16px; border-radius:20px; border:2px solid var(--border); background:white; font-family:var(--font); font-size:13px; font-weight:600; cursor:pointer; }
+    .period-btn.active { border-color:var(--primary); color:var(--primary); background:var(--primary-light); }
+    .stat-row { display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid var(--border); }
+    .stat-label { color:var(--text2); font-size:14px; }
+    .stat-val { font-weight:700; font-size:15px; }
+  </style>
+</head>
+<body>
+<div class="app-shell">
+  <div class="top-bar">
+    <div class="top-bar-left">
+      <a href="dashboard.html" style="text-decoration:none;font-size:22px;margin-right:4px;">←</a>
+      <div class="top-bar-title">📊 Báo Cáo</div>
+    </div>
+  </div>
+
+  <div class="page-content">
+    <!-- Period selector -->
+    <div style="display:flex;gap:8px;margin-bottom:20px;overflow-x:auto;padding-bottom:4px;">
+      <button class="period-btn active" onclick="setPeriod('week',this)">7 ngày qua</button>
+      <button class="period-btn" onclick="setPeriod('month',this)">Tháng này</button>
+      <button class="period-btn" onclick="setPeriod('last_month',this)">Tháng trước</button>
+    </div>
+
+    <!-- KPIs -->
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-icon">💰</div>
+        <div class="kpi-label">Doanh thu</div>
+        <div class="kpi-val" style="color:var(--primary);" id="kpiRevenue">...</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">🛒</div>
+        <div class="kpi-label">Số đơn</div>
+        <div class="kpi-val" style="color:var(--blue);" id="kpiOrders">...</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">📦</div>
+        <div class="kpi-label">Sp đã bán</div>
+        <div class="kpi-val" style="color:var(--green);" id="kpiItems">...</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">💵</div>
+        <div class="kpi-label">TB / đơn</div>
+        <div class="kpi-val" style="color:var(--purple);" id="kpiAvg">...</div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="card">
+      <div class="section-title" style="margin-bottom:12px;">Chi tiết</div>
+      <div class="stat-row"><span class="stat-label">Đã thu tiền mặt</span><span class="stat-val text-green" id="statPaid">...</span></div>
+      <div class="stat-row"><span class="stat-label">Ghi nợ</span><span class="stat-val text-red" id="statDebt">...</span></div>
+      <div class="stat-row"><span class="stat-label">Đơn lớn nhất</span><span class="stat-val" id="statMax">...</span></div>
+    </div>
+
+    <!-- Doanh thu theo ngày -->
+    <div class="card">
+      <div class="section-title" style="margin-bottom:4px;">Doanh thu theo ngày</div>
+      <div class="bar-chart" id="barChart"><div class="loading">Đang tải...</div></div>
+    </div>
+
+    <!-- Top sản phẩm -->
+    <div class="card">
+      <div class="section-title" style="margin-bottom:12px;">🏆 Top sản phẩm bán chạy</div>
+      <div id="topProducts"><div class="loading">Đang tải...</div></div>
+    </div>
+
+    <!-- Lịch sử đơn hàng -->
+    <div class="section-header">
+      <div class="section-title">Lịch sử đơn hàng</div>
+    </div>
+    <div id="orderHistory"><div class="loading">Đang tải...</div></div>
+  </div>
+
+  <!-- BOTTOM NAV -->
+  <nav class="bottom-nav">
+    <a class="nav-item" href="dashboard.html"><span class="nav-icon">🏠</span><span class="nav-label">Tổng quan</span></a>
+    <a class="nav-item" href="sales.html"><span class="nav-icon">🛒</span><span class="nav-label">Bán hàng</span></a>
+    <a class="nav-item" href="inventory.html"><span class="nav-icon">📦</span><span class="nav-label">Kho hàng</span></a>
+    <a class="nav-item" href="debt.html"><span class="nav-icon">📋</span><span class="nav-label">Công nợ</span></a>
+    <a class="nav-item active" href="report.html"><span class="nav-icon">📊</span><span class="nav-label">Báo cáo</span></a>
+  </nav>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+  import { getFirestore, collection, getDocs, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import FIREBASE_CONFIG from "../js/firebase-config.js";
+  import { fmt, fmtDate, fmtDateTime } from "../js/utils.js";
+
+  const app = initializeApp(FIREBASE_CONFIG);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+  onAuthStateChanged(auth, u => { if (!u) window.location.href = "../index.html"; });
+
+  let currentPeriod = "week";
+
+  function getDateRange(period) {
+    const now = new Date();
+    let start, end;
+    if (period === "week") {
+      start = new Date(now); start.setDate(now.getDate() - 6); start.setHours(0,0,0,0);
+      end = now;
+    } else if (period === "month") {
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+      end = now;
+    } else {
+      start = new Date(now.getFullYear(), now.getMonth()-1, 1);
+      end = new Date(now.getFullYear(), now.getMonth(), 0);
+    }
+    return { start: start.toISOString().split("T")[0], end: end.toISOString().split("T")[0] };
+  }
+
+  window.setPeriod = function(period, el) {
+    currentPeriod = period;
+    document.querySelectorAll(".period-btn").forEach(b => b.classList.remove("active"));
+    el.classList.add("active");
+    loadReport();
+  };
+
+  async function loadReport() {
+    const { start, end } = getDateRange(currentPeriod);
+    const snap = await getDocs(query(collection(db,"orders"), where("date",">=",start), where("date","<=",end), orderBy("date","desc")));
+
+    let orders = [];
+    snap.forEach(d => orders.push({ id: d.id, ...d.data() }));
+
+    const revenue = orders.reduce((s, o) => s + o.total, 0);
+    const itemsSold = orders.reduce((s, o) => s + (o.items?.reduce((a,i) => a+i.qty, 0) || 0), 0);
+    const paidRev = orders.filter(o => o.paymentStatus === "paid").reduce((s, o) => s + o.total, 0);
+    const debtRev = orders.filter(o => o.paymentStatus === "debt").reduce((s, o) => s + o.total, 0);
+    const maxOrder = orders.reduce((max, o) => o.total > max ? o.total : max, 0);
+
+    document.getElementById("kpiRevenue").textContent = fmt(revenue);
+    document.getElementById("kpiOrders").textContent = orders.length + " đơn";
+    document.getElementById("kpiItems").textContent = itemsSold + " sp";
+    document.getElementById("kpiAvg").textContent = orders.length ? fmt(Math.round(revenue / orders.length)) : "0đ";
+    document.getElementById("statPaid").textContent = fmt(paidRev);
+    document.getElementById("statDebt").textContent = fmt(debtRev);
+    document.getElementById("statMax").textContent = fmt(maxOrder);
+
+    // Bar chart by date
+    const byDate = {};
+    orders.forEach(o => { byDate[o.date] = (byDate[o.date] || 0) + o.total; });
+    const dates = Object.keys(byDate).sort().slice(-10);
+    const maxVal = Math.max(...dates.map(d => byDate[d]), 1);
+    const barEl = document.getElementById("barChart");
+    barEl.innerHTML = dates.length === 0 ? "<div style='color:var(--text2);text-align:center;padding:20px;'>Không có dữ liệu</div>" :
+      dates.map(d => `
+        <div class="bar-row">
+          <div class="bar-label">${d.slice(5)}</div>
+          <div class="bar-wrap">
+            <div class="bar-fill" style="width:${Math.round(byDate[d]/maxVal*100)}%">
+              <div class="bar-val">${fmt(byDate[d])}</div>
+            </div>
+          </div>
+        </div>
+      `).join("");
+
+    // Top products
+    const productCount = {};
+    orders.forEach(o => o.items?.forEach(item => {
+      if (!productCount[item.name]) productCount[item.name] = { qty: 0, revenue: 0 };
+      productCount[item.name].qty += item.qty;
+      productCount[item.name].revenue += item.subtotal;
+    }));
+    const topProds = Object.entries(productCount).sort((a,b) => b[1].revenue - a[1].revenue).slice(0,5);
+    const topEl = document.getElementById("topProducts");
+    topEl.innerHTML = topProds.length === 0 ? "<div style='color:var(--text2);'>Chưa có dữ liệu</div>" :
+      topProds.map(([name, s], i) => `
+        <div class="stat-row">
+          <span class="stat-label">${["🥇","🥈","🥉","4️⃣","5️⃣"][i]} ${name}</span>
+          <div style="text-align:right;">
+            <div class="stat-val">${fmt(s.revenue)}</div>
+            <div style="font-size:11px;color:var(--text2);">×${s.qty} cái</div>
+          </div>
+        </div>
+      `).join("");
+
+    // Order history
+    const histEl = document.getElementById("orderHistory");
+    histEl.innerHTML = orders.length === 0
+      ? `<div class="empty-state"><div class="empty-icon">🛒</div><div class="empty-text">Không có đơn hàng</div></div>`
+      : orders.map(o => `
+        <div class="list-item">
+          <div class="list-icon bg-orange">🛒</div>
+          <div class="list-info">
+            <div class="list-name">${o.customerName || "Khách lẻ"}</div>
+            <div class="list-sub">${fmtDate(o.date)} • ${o.items?.length || 0} sản phẩm</div>
+          </div>
+          <div class="list-right">
+            <div class="list-amount text-green">${fmt(o.total)}</div>
+            <span class="tag ${o.paymentStatus === "paid" ? "tag-green" : "tag-red"}">${o.paymentStatus === "paid" ? "Đã thu" : "Nợ"}</span>
+          </div>
+        </div>
+      `).join("");
+  }
+
+  loadReport();
+</script>
+</body>
+</html>

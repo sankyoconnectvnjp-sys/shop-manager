@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+  <title>Kho Hàng</title>
+  <link rel="stylesheet" href="../css/main.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+</head>
+<body>
+<div class="app-shell">
+  <div class="top-bar">
+    <div class="top-bar-left">
+      <a href="dashboard.html" style="text-decoration:none;font-size:22px;margin-right:4px;">←</a>
+      <div class="top-bar-title">📦 Kho Hàng</div>
+    </div>
+    <button class="btn btn-primary btn-sm" id="btnAdd">+ Thêm hàng</button>
+  </div>
+
+  <div class="page-content">
+    <div class="search-bar">
+      <span>🔍</span>
+      <input type="text" id="searchInput" placeholder="Tìm tên hàng..."/>
+    </div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;" id="catFilter">
+      <button class="tag tag-orange" data-cat="" onclick="filterCat(this,'')">Tất cả</button>
+    </div>
+
+    <div id="itemList"><div class="loading">Đang tải...</div></div>
+  </div>
+
+  <button class="fab" id="fabAdd">+</button>
+
+  <!-- BOTTOM NAV -->
+  <nav class="bottom-nav">
+    <a class="nav-item" href="dashboard.html"><span class="nav-icon">🏠</span><span class="nav-label">Tổng quan</span></a>
+    <a class="nav-item" href="sales.html"><span class="nav-icon">🛒</span><span class="nav-label">Bán hàng</span></a>
+    <a class="nav-item active" href="inventory.html"><span class="nav-icon">📦</span><span class="nav-label">Kho hàng</span></a>
+    <a class="nav-item" href="debt.html"><span class="nav-icon">📋</span><span class="nav-label">Công nợ</span></a>
+    <a class="nav-item" href="report.html"><span class="nav-icon">📊</span><span class="nav-label">Báo cáo</span></a>
+  </nav>
+</div>
+
+<!-- MODAL THÊM / SỬA HÀNG -->
+<div class="modal-overlay" id="modalItem">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modalTitle">Thêm hàng mới</div>
+      <button class="btn-close" onclick="closeModal()">✕</button>
+    </div>
+    <input type="hidden" id="editId"/>
+    <div class="field">
+      <label>Tên sản phẩm *</label>
+      <input type="text" id="fName" placeholder="Ví dụ: Áo thun nữ size M"/>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Danh mục</label>
+        <input type="text" id="fCategory" placeholder="Áo, Quần, Váy..."/>
+      </div>
+      <div class="field">
+        <label>Số lượng *</label>
+        <input type="number" id="fQty" min="0" placeholder="0"/>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Giá nhập (đ)</label>
+        <input type="number" id="fCostPrice" min="0" placeholder="0"/>
+      </div>
+      <div class="field">
+        <label>Giá bán (đ) *</label>
+        <input type="number" id="fSellPrice" min="0" placeholder="0"/>
+      </div>
+    </div>
+    <div class="field">
+      <label>Ghi chú</label>
+      <input type="text" id="fNote" placeholder="Màu sắc, size, nhà cung cấp..."/>
+    </div>
+    <button class="btn btn-primary btn-full mt-16" id="btnSave">💾 Lưu</button>
+    <button class="btn btn-danger btn-full mt-16" id="btnDelete" style="display:none;margin-top:10px;">🗑️ Xóa sản phẩm này</button>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+  import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import FIREBASE_CONFIG from "../js/firebase-config.js";
+  import { fmt, toast } from "../js/utils.js";
+
+  const app = initializeApp(FIREBASE_CONFIG);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  onAuthStateChanged(auth, u => { if (!u) window.location.href = "../index.html"; });
+
+  let allItems = [];
+  let currentCat = "";
+
+  async function loadItems() {
+    const snap = await getDocs(query(collection(db,"inventory"), orderBy("name")));
+    allItems = [];
+    const cats = new Set();
+    snap.forEach(d => { allItems.push({ id: d.id, ...d.data() }); if (d.data().category) cats.add(d.data().category); });
+    
+    // Build category filter
+    const catEl = document.getElementById("catFilter");
+    catEl.innerHTML = `<button class="tag ${currentCat === "" ? "tag-orange" : "tag-blue"}" onclick="filterCat(this,'')">Tất cả</button>`;
+    cats.forEach(c => {
+      catEl.innerHTML += `<button class="tag tag-blue" onclick="filterCat(this,'${c}')">${c}</button>`;
+    });
+    
+    renderList();
+  }
+
+  window.filterCat = function(el, cat) {
+    currentCat = cat;
+    document.querySelectorAll("#catFilter .tag").forEach(b => b.className = "tag tag-blue");
+    el.className = "tag tag-orange";
+    renderList();
+  };
+
+  function renderList() {
+    const search = document.getElementById("searchInput").value.toLowerCase();
+    let items = allItems.filter(p => 
+      p.name.toLowerCase().includes(search) &&
+      (currentCat === "" || p.category === currentCat)
+    );
+
+    const el = document.getElementById("itemList");
+    if (!items.length) {
+      el.innerHTML = `<div class="empty-state"><div class="empty-icon">📦</div><div class="empty-text">Không có sản phẩm nào</div><div class="empty-sub">Nhấn + để thêm hàng mới</div></div>`;
+      return;
+    }
+
+    el.innerHTML = items.map(p => `
+      <div class="list-item" onclick="openEdit('${p.id}')">
+        <div class="list-icon ${p.quantity <= 0 ? "bg-red" : p.quantity <= 5 ? "bg-orange" : "bg-green"}">👕</div>
+        <div class="list-info">
+          <div class="list-name">${p.name}</div>
+          <div class="list-sub">${p.category || "—"} ${p.note ? "• " + p.note : ""}</div>
+        </div>
+        <div class="list-right">
+          <div class="list-amount">${fmt(p.sellPrice)}</div>
+          <div class="list-date">Còn: <strong class="${p.quantity <= 5 ? "text-red" : "text-green"}">${p.quantity}</strong></div>
+        </div>
+      </div>
+    `).join("");
+  }
+
+  document.getElementById("searchInput").addEventListener("input", renderList);
+
+  // Modal
+  window.closeModal = function() { document.getElementById("modalItem").classList.remove("open"); }
+  document.getElementById("modalItem").addEventListener("click", e => { if (e.target === e.currentTarget) closeModal(); });
+
+  function openAdd() {
+    document.getElementById("modalTitle").textContent = "Thêm hàng mới";
+    document.getElementById("editId").value = "";
+    ["fName","fCategory","fNote"].forEach(id => document.getElementById(id).value = "");
+    ["fQty","fCostPrice","fSellPrice"].forEach(id => document.getElementById(id).value = "");
+    document.getElementById("btnDelete").style.display = "none";
+    document.getElementById("modalItem").classList.add("open");
+  }
+
+  window.openEdit = function(id) {
+    const p = allItems.find(x => x.id === id);
+    if (!p) return;
+    document.getElementById("modalTitle").textContent = "Sửa sản phẩm";
+    document.getElementById("editId").value = id;
+    document.getElementById("fName").value = p.name || "";
+    document.getElementById("fCategory").value = p.category || "";
+    document.getElementById("fQty").value = p.quantity || 0;
+    document.getElementById("fCostPrice").value = p.costPrice || "";
+    document.getElementById("fSellPrice").value = p.sellPrice || "";
+    document.getElementById("fNote").value = p.note || "";
+    document.getElementById("btnDelete").style.display = "block";
+    document.getElementById("modalItem").classList.add("open");
+  };
+
+  document.getElementById("btnAdd").addEventListener("click", openAdd);
+  document.getElementById("fabAdd").addEventListener("click", openAdd);
+
+  document.getElementById("btnSave").addEventListener("click", async () => {
+    const name = document.getElementById("fName").value.trim();
+    const qty = parseInt(document.getElementById("fQty").value) || 0;
+    const sellPrice = parseInt(document.getElementById("fSellPrice").value) || 0;
+    if (!name || !sellPrice) { toast("Vui lòng nhập tên và giá bán!", "error"); return; }
+
+    const data = {
+      name,
+      category: document.getElementById("fCategory").value.trim(),
+      quantity: qty,
+      costPrice: parseInt(document.getElementById("fCostPrice").value) || 0,
+      sellPrice,
+      note: document.getElementById("fNote").value.trim(),
+      updatedAt: serverTimestamp()
+    };
+
+    const editId = document.getElementById("editId").value;
+    try {
+      if (editId) {
+        await updateDoc(doc(db,"inventory",editId), data);
+        toast("Đã cập nhật!");
+      } else {
+        data.createdAt = serverTimestamp();
+        await addDoc(collection(db,"inventory"), data);
+        toast("Đã thêm hàng mới!");
+      }
+      closeModal();
+      loadItems();
+    } catch(e) { toast("Lỗi: " + e.message, "error"); }
+  });
+
+  document.getElementById("btnDelete").addEventListener("click", async () => {
+    if (!confirm("Xóa sản phẩm này?")) return;
+    const editId = document.getElementById("editId").value;
+    await deleteDoc(doc(db,"inventory",editId));
+    toast("Đã xóa!");
+    closeModal();
+    loadItems();
+  });
+
+  loadItems();
+</script>
+</body>
+</html>

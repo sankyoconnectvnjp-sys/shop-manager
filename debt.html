@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+  <title>Công Nợ</title>
+  <link rel="stylesheet" href="../css/main.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+</head>
+<body>
+<div class="app-shell">
+  <div class="top-bar">
+    <div class="top-bar-left">
+      <a href="dashboard.html" style="text-decoration:none;font-size:22px;margin-right:4px;">←</a>
+      <div class="top-bar-title">📋 Công Nợ</div>
+    </div>
+    <button class="btn btn-primary btn-sm" id="btnAdd">+ Ghi nợ</button>
+  </div>
+
+  <div class="page-content">
+    <!-- Summary -->
+    <div class="kpi-grid" style="grid-template-columns:1fr 1fr;margin-bottom:16px;">
+      <div class="kpi-card">
+        <div class="kpi-icon">💸</div>
+        <div class="kpi-label">Chưa thu</div>
+        <div class="kpi-val text-red" id="totalDebt">...</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">✅</div>
+        <div class="kpi-label">Đã thu tháng này</div>
+        <div class="kpi-val text-green" id="totalPaid">...</div>
+      </div>
+    </div>
+
+    <!-- Filter -->
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+      <button class="tag tag-orange" id="filterAll" onclick="setFilter('all')">Tất cả</button>
+      <button class="tag tag-blue" id="filterDebt" onclick="setFilter('chua_thu')">Chưa thu</button>
+      <button class="tag tag-blue" id="filterPaid" onclick="setFilter('da_thu')">Đã thu</button>
+    </div>
+
+    <div class="search-bar">
+      <span>🔍</span>
+      <input type="text" id="searchInput" placeholder="Tìm tên khách..."/>
+    </div>
+
+    <div id="debtList"><div class="loading">Đang tải...</div></div>
+  </div>
+
+  <button class="fab" id="fabAdd">+</button>
+
+  <!-- BOTTOM NAV -->
+  <nav class="bottom-nav">
+    <a class="nav-item" href="dashboard.html"><span class="nav-icon">🏠</span><span class="nav-label">Tổng quan</span></a>
+    <a class="nav-item" href="sales.html"><span class="nav-icon">🛒</span><span class="nav-label">Bán hàng</span></a>
+    <a class="nav-item" href="inventory.html"><span class="nav-icon">📦</span><span class="nav-label">Kho hàng</span></a>
+    <a class="nav-item active" href="debt.html"><span class="nav-icon">📋</span><span class="nav-label">Công nợ</span></a>
+    <a class="nav-item" href="report.html"><span class="nav-icon">📊</span><span class="nav-label">Báo cáo</span></a>
+  </nav>
+</div>
+
+<!-- MODAL GHI NỢ -->
+<div class="modal-overlay" id="modalDebt">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modalTitle">Ghi nợ mới</div>
+      <button class="btn-close" onclick="closeModal()">✕</button>
+    </div>
+    <input type="hidden" id="editId"/>
+    <div class="field">
+      <label>Tên khách hàng *</label>
+      <input type="text" id="fName" placeholder="Họ tên khách..."/>
+    </div>
+    <div class="field">
+      <label>Số tiền nợ (đ) *</label>
+      <input type="number" id="fAmount" min="0" placeholder="0"/>
+    </div>
+    <div class="field">
+      <label>Ngày ghi nợ</label>
+      <input type="date" id="fDate"/>
+    </div>
+    <div class="field">
+      <label>Ghi chú</label>
+      <input type="text" id="fNote" placeholder="Mua gì, hẹn trả khi nào..."/>
+    </div>
+    <div class="field">
+      <label>Trạng thái</label>
+      <select id="fStatus">
+        <option value="chua_thu">⏳ Chưa thu</option>
+        <option value="da_thu">✅ Đã thu</option>
+      </select>
+    </div>
+    <button class="btn btn-primary btn-full mt-16" id="btnSave">💾 Lưu</button>
+    <button class="btn btn-success btn-full" id="btnMarkPaid" style="display:none;margin-top:10px;">✅ Đánh dấu đã thu</button>
+    <button class="btn btn-danger btn-full" id="btnDelete" style="display:none;margin-top:10px;">🗑️ Xóa</button>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+  import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, orderBy, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import FIREBASE_CONFIG from "../js/firebase-config.js";
+  import { fmt, toast, today, fmtDate } from "../js/utils.js";
+
+  const app = initializeApp(FIREBASE_CONFIG);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+  onAuthStateChanged(auth, u => { if (!u) window.location.href = "../index.html"; });
+
+  let allDebts = [];
+  let currentFilter = "all";
+
+  async function loadDebts() {
+    const snap = await getDocs(query(collection(db,"debts"), orderBy("createdAt","desc")));
+    allDebts = [];
+    snap.forEach(d => allDebts.push({ id: d.id, ...d.data() }));
+
+    const totalDebt = allDebts.filter(d => d.status === "chua_thu").reduce((s, d) => s + d.amount, 0);
+    document.getElementById("totalDebt").textContent = fmt(totalDebt);
+
+    const now = new Date();
+    const monthStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+    const totalPaid = allDebts.filter(d => d.status === "da_thu" && d.date?.startsWith(monthStr)).reduce((s, d) => s + d.amount, 0);
+    document.getElementById("totalPaid").textContent = fmt(totalPaid);
+
+    renderList();
+  }
+
+  window.setFilter = function(f) {
+    currentFilter = f;
+    ["filterAll","filterDebt","filterPaid"].forEach(id => document.getElementById(id).className = "tag tag-blue");
+    document.getElementById(f === "all" ? "filterAll" : f === "chua_thu" ? "filterDebt" : "filterPaid").className = "tag tag-orange";
+    renderList();
+  };
+
+  function renderList() {
+    const search = document.getElementById("searchInput").value.toLowerCase();
+    let items = allDebts.filter(d => 
+      d.customerName?.toLowerCase().includes(search) &&
+      (currentFilter === "all" || d.status === currentFilter)
+    );
+
+    const el = document.getElementById("debtList");
+    if (!items.length) {
+      el.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">Không có công nợ</div></div>`;
+      return;
+    }
+
+    el.innerHTML = items.map(d => `
+      <div class="list-item" onclick="openEdit('${d.id}')">
+        <div class="list-icon ${d.status === "da_thu" ? "bg-green" : "bg-red"}">👤</div>
+        <div class="list-info">
+          <div class="list-name">${d.customerName}</div>
+          <div class="list-sub">${fmtDate(d.date)} ${d.note ? "• " + d.note : ""}</div>
+        </div>
+        <div class="list-right">
+          <div class="list-amount ${d.status === "da_thu" ? "text-green" : "text-red"}">${fmt(d.amount)}</div>
+          <div class="list-date"><span class="tag ${d.status === "da_thu" ? "tag-green" : "tag-red"}">${d.status === "da_thu" ? "Đã thu" : "Chưa thu"}</span></div>
+        </div>
+      </div>
+    `).join("");
+  }
+
+  document.getElementById("searchInput").addEventListener("input", renderList);
+
+  window.closeModal = function() { document.getElementById("modalDebt").classList.remove("open"); };
+  document.getElementById("modalDebt").addEventListener("click", e => { if (e.target === e.currentTarget) closeModal(); });
+
+  function openAdd() {
+    document.getElementById("modalTitle").textContent = "Ghi nợ mới";
+    document.getElementById("editId").value = "";
+    document.getElementById("fName").value = "";
+    document.getElementById("fAmount").value = "";
+    document.getElementById("fDate").value = today();
+    document.getElementById("fNote").value = "";
+    document.getElementById("fStatus").value = "chua_thu";
+    document.getElementById("btnDelete").style.display = "none";
+    document.getElementById("btnMarkPaid").style.display = "none";
+    document.getElementById("modalDebt").classList.add("open");
+  }
+
+  window.openEdit = function(id) {
+    const d = allDebts.find(x => x.id === id);
+    if (!d) return;
+    document.getElementById("modalTitle").textContent = "Chi tiết công nợ";
+    document.getElementById("editId").value = id;
+    document.getElementById("fName").value = d.customerName || "";
+    document.getElementById("fAmount").value = d.amount || "";
+    document.getElementById("fDate").value = d.date || today();
+    document.getElementById("fNote").value = d.note || "";
+    document.getElementById("fStatus").value = d.status || "chua_thu";
+    document.getElementById("btnDelete").style.display = "block";
+    document.getElementById("btnMarkPaid").style.display = d.status === "chua_thu" ? "block" : "none";
+    document.getElementById("modalDebt").classList.add("open");
+  };
+
+  document.getElementById("btnAdd").addEventListener("click", openAdd);
+  document.getElementById("fabAdd").addEventListener("click", openAdd);
+
+  document.getElementById("btnSave").addEventListener("click", async () => {
+    const name = document.getElementById("fName").value.trim();
+    const amount = parseInt(document.getElementById("fAmount").value) || 0;
+    if (!name || !amount) { toast("Vui lòng nhập đủ thông tin!", "error"); return; }
+    const data = {
+      customerName: name,
+      amount,
+      date: document.getElementById("fDate").value,
+      note: document.getElementById("fNote").value.trim(),
+      status: document.getElementById("fStatus").value,
+      updatedAt: serverTimestamp()
+    };
+    const editId = document.getElementById("editId").value;
+    try {
+      if (editId) { await updateDoc(doc(db,"debts",editId), data); toast("Đã cập nhật!"); }
+      else { data.createdAt = serverTimestamp(); await addDoc(collection(db,"debts"), data); toast("Đã ghi nợ!"); }
+      closeModal(); loadDebts();
+    } catch(e) { toast("Lỗi: " + e.message, "error"); }
+  });
+
+  document.getElementById("btnMarkPaid").addEventListener("click", async () => {
+    const editId = document.getElementById("editId").value;
+    await updateDoc(doc(db,"debts",editId), { status: "da_thu", updatedAt: serverTimestamp() });
+    toast("✅ Đã đánh dấu thu xong!");
+    closeModal(); loadDebts();
+  });
+
+  document.getElementById("btnDelete").addEventListener("click", async () => {
+    if (!confirm("Xóa khoản nợ này?")) return;
+    await deleteDoc(doc(db,"debts",document.getElementById("editId").value));
+    toast("Đã xóa!"); closeModal(); loadDebts();
+  });
+
+  loadDebts();
+</script>
+</body>
+</html>

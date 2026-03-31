@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+  <title>Bán Hàng</title>
+  <link rel="stylesheet" href="../css/main.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <style>
+    .cart-bar { position:fixed; bottom:70px; left:0; right:0; background:var(--primary); color:white; padding:14px 20px; display:flex; align-items:center; justify-content:space-between; z-index:90; display:none; }
+    .cart-bar.show { display:flex; }
+    .product-card { background:white; border-radius:12px; padding:14px; margin-bottom:10px; display:flex; align-items:center; gap:12px; box-shadow:var(--shadow); }
+    .qty-ctrl { display:flex; align-items:center; gap:8px; }
+    .qty-btn { width:30px; height:30px; border-radius:8px; border:2px solid var(--border); background:white; font-size:18px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+    .qty-btn.plus { background:var(--primary); color:white; border-color:var(--primary); }
+    .cart-item { display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border); }
+  </style>
+</head>
+<body>
+<div class="app-shell">
+  <div class="top-bar">
+    <div class="top-bar-left">
+      <a href="dashboard.html" style="text-decoration:none;font-size:22px;margin-right:4px;">←</a>
+      <div class="top-bar-title">🛒 Bán Hàng</div>
+    </div>
+    <div style="font-size:13px;font-weight:600;color:var(--primary)" id="cartCount">Giỏ: 0</div>
+  </div>
+
+  <div class="page-content">
+    <!-- Tìm sản phẩm -->
+    <div class="search-bar">
+      <span>🔍</span>
+      <input type="text" id="searchInput" placeholder="Tìm sản phẩm để thêm vào đơn..."/>
+    </div>
+
+    <!-- Giỏ hàng hiện tại -->
+    <div class="card" id="cartCard" style="display:none;">
+      <div class="section-header">
+        <div class="section-title">🛒 Đơn hàng</div>
+        <button class="btn btn-sm" style="background:#fef2f2;color:var(--red);" id="btnClearCart">Xóa đơn</button>
+      </div>
+      <div id="cartItems"></div>
+      <div class="divider"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <span style="font-weight:700;font-size:16px;">Tổng cộng:</span>
+        <span style="font-weight:800;font-size:22px;color:var(--primary);" id="cartTotal">0đ</span>
+      </div>
+
+      <div class="field">
+        <label>Tên khách hàng</label>
+        <input type="text" id="fCustomer" placeholder="Khách lẻ (bỏ qua nếu không cần)"/>
+      </div>
+      <div class="field">
+        <label>Thanh toán</label>
+        <select id="fPayment">
+          <option value="paid">✅ Đã thanh toán</option>
+          <option value="debt">⏳ Ghi nợ</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Ghi chú</label>
+        <input type="text" id="fNote" placeholder="Ghi chú thêm..."/>
+      </div>
+      <button class="btn btn-success btn-full" id="btnCheckout" style="font-size:16px;padding:16px;">
+        ✅ Xác nhận bán
+      </button>
+    </div>
+
+    <!-- Danh sách sản phẩm -->
+    <div class="section-header">
+      <div class="section-title">Chọn hàng để bán</div>
+    </div>
+    <div id="productList"><div class="loading">Đang tải...</div></div>
+  </div>
+
+  <!-- BOTTOM NAV -->
+  <nav class="bottom-nav">
+    <a class="nav-item" href="dashboard.html"><span class="nav-icon">🏠</span><span class="nav-label">Tổng quan</span></a>
+    <a class="nav-item active" href="sales.html"><span class="nav-icon">🛒</span><span class="nav-label">Bán hàng</span></a>
+    <a class="nav-item" href="inventory.html"><span class="nav-icon">📦</span><span class="nav-label">Kho hàng</span></a>
+    <a class="nav-item" href="debt.html"><span class="nav-icon">📋</span><span class="nav-label">Công nợ</span></a>
+    <a class="nav-item" href="report.html"><span class="nav-icon">📊</span><span class="nav-label">Báo cáo</span></a>
+  </nav>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+  import { getFirestore, collection, addDoc, updateDoc, doc, getDocs, query, orderBy, serverTimestamp, increment } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import FIREBASE_CONFIG from "../js/firebase-config.js";
+  import { fmt, toast, today } from "../js/utils.js";
+
+  const app = initializeApp(FIREBASE_CONFIG);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+  onAuthStateChanged(auth, u => { if (!u) window.location.href = "../index.html"; });
+
+  let products = [];
+  let cart = {}; // { productId: { product, qty } }
+
+  async function loadProducts() {
+    const snap = await getDocs(query(collection(db,"inventory"), orderBy("name")));
+    products = [];
+    snap.forEach(d => products.push({ id: d.id, ...d.data() }));
+    renderProducts();
+  }
+
+  function renderProducts() {
+    const search = document.getElementById("searchInput").value.toLowerCase();
+    const filtered = products.filter(p => p.name.toLowerCase().includes(search) && p.quantity > 0);
+    const el = document.getElementById("productList");
+    if (!filtered.length) {
+      el.innerHTML = `<div class="empty-state"><div class="empty-icon">📦</div><div class="empty-text">Không tìm thấy sản phẩm</div></div>`;
+      return;
+    }
+    el.innerHTML = filtered.map(p => `
+      <div class="product-card">
+        <div style="flex:1;">
+          <div style="font-weight:700;">${p.name}</div>
+          <div style="font-size:12px;color:var(--text2);">${p.category || ""} • Còn: ${p.quantity}</div>
+          <div style="font-weight:800;color:var(--primary);margin-top:4px;">${fmt(p.sellPrice)}</div>
+        </div>
+        <div class="qty-ctrl">
+          <button class="qty-btn" onclick="changeQty('${p.id}',-1)">−</button>
+          <span style="font-weight:700;min-width:20px;text-align:center;" id="qtyDisplay_${p.id}">${cart[p.id]?.qty || 0}</span>
+          <button class="qty-btn plus" onclick="changeQty('${p.id}',1)">+</button>
+        </div>
+      </div>
+    `).join("");
+  }
+
+  window.changeQty = function(id, delta) {
+    const p = products.find(x => x.id === id);
+    if (!p) return;
+    const current = cart[id]?.qty || 0;
+    const newQty = Math.max(0, Math.min(p.quantity, current + delta));
+    if (newQty === 0) delete cart[id];
+    else cart[id] = { product: p, qty: newQty };
+    updateCartUI();
+    // update display
+    const disp = document.getElementById(`qtyDisplay_${id}`);
+    if (disp) disp.textContent = newQty;
+  };
+
+  function updateCartUI() {
+    const items = Object.values(cart);
+    const count = items.reduce((s, x) => s + x.qty, 0);
+    const total = items.reduce((s, x) => s + x.qty * x.product.sellPrice, 0);
+    document.getElementById("cartCount").textContent = `Giỏ: ${count}`;
+    document.getElementById("cartTotal").textContent = fmt(total);
+
+    const cartCard = document.getElementById("cartCard");
+    const cartItemsEl = document.getElementById("cartItems");
+
+    if (items.length === 0) {
+      cartCard.style.display = "none";
+      return;
+    }
+    cartCard.style.display = "block";
+    cartItemsEl.innerHTML = items.map(({ product: p, qty }) => `
+      <div class="cart-item">
+        <div>
+          <div style="font-weight:600;">${p.name}</div>
+          <div style="font-size:12px;color:var(--text2);">${fmt(p.sellPrice)} × ${qty}</div>
+        </div>
+        <div style="font-weight:700;">${fmt(p.sellPrice * qty)}</div>
+      </div>
+    `).join("");
+  }
+
+  document.getElementById("searchInput").addEventListener("input", renderProducts);
+
+  document.getElementById("btnClearCart").addEventListener("click", () => {
+    cart = {};
+    updateCartUI();
+    renderProducts();
+  });
+
+  document.getElementById("btnCheckout").addEventListener("click", async () => {
+    const items = Object.values(cart);
+    if (!items.length) { toast("Giỏ hàng trống!", "error"); return; }
+
+    const total = items.reduce((s, x) => s + x.qty * x.product.sellPrice, 0);
+    const paymentStatus = document.getElementById("fPayment").value;
+    const customerName = document.getElementById("fCustomer").value.trim() || "Khách lẻ";
+
+    try {
+      // Create order
+      const orderRef = await addDoc(collection(db,"orders"), {
+        customerName,
+        items: items.map(({ product: p, qty }) => ({ productId: p.id, name: p.name, qty, price: p.sellPrice, subtotal: p.sellPrice * qty })),
+        total,
+        paymentStatus,
+        note: document.getElementById("fNote").value.trim(),
+        date: today(),
+        createdAt: serverTimestamp()
+      });
+
+      // Update inventory
+      for (const { product: p, qty } of items) {
+        await updateDoc(doc(db,"inventory",p.id), { quantity: increment(-qty) });
+      }
+
+      // If debt, create debt record
+      if (paymentStatus === "debt" && customerName !== "Khách lẻ") {
+        await addDoc(collection(db,"debts"), {
+          customerName,
+          amount: total,
+          orderId: orderRef.id,
+          status: "chua_thu",
+          note: `Đơn hàng ngày ${today()}`,
+          date: today(),
+          createdAt: serverTimestamp()
+        });
+      }
+
+      toast("✅ Bán hàng thành công!");
+      cart = {};
+      updateCartUI();
+      await loadProducts();
+      document.getElementById("fCustomer").value = "";
+      document.getElementById("fNote").value = "";
+    } catch(e) { toast("Lỗi: " + e.message, "error"); }
+  });
+
+  loadProducts();
+</script>
+</body>
+</html>
