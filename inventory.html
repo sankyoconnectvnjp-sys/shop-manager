@@ -755,42 +755,43 @@ body {
   // BARCODE SCAN
   window.startScan = async function() {
     document.getElementById("scannerWrap").style.display = "block";
+    document.getElementById("scanStatus").textContent = "Đang tải thư viện quét mã...";
+    
+    // Load ZXing library dynamically
+    if (!window.ZXing) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js";
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+
     try {
-      scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      document.getElementById("scanVideo").srcObject = scanStream;
+      const codeReader = new ZXing.BrowserMultiFormatReader();
+      window._zxingReader = codeReader;
       document.getElementById("scanStatus").textContent = "Đưa mã vạch vào khung đỏ...";
-      // Use BarcodeDetector if available
-      if ("BarcodeDetector" in window) {
-        const detector = new BarcodeDetector({ formats: ["ean_13","ean_8","code_128","code_39","qr_code","upc_a","upc_e"] });
-        const video = document.getElementById("scanVideo");
-        scanInterval = setInterval(async () => {
-          try {
-            const barcodes = await detector.detect(video);
-            if (barcodes.length > 0) {
-              const code = barcodes[0].rawValue;
-              stopScan();
-              onBarcodeFound(code);
-            }
-          } catch(e) {}
-        }, 300);
-      } else {
-        // Fallback: manual canvas scan with ZXing via CDN
-        document.getElementById("scanStatus").textContent = "Trình duyệt không hỗ trợ tự động, nhập mã thủ công";
-        setTimeout(() => {
-          const code = prompt("Nhập mã vạch:");
-          stopScan();
-          if (code) onBarcodeFound(code);
-          else skipScan();
-        }, 1000);
-      }
+      
+      await codeReader.decodeFromConstraints(
+        { video: { facingMode: "environment" } },
+        "scanVideo",
+        (result, err) => {
+          if (result) {
+            window._zxingReader.reset();
+            onBarcodeFound(result.getText());
+          }
+        }
+      );
     } catch(e) {
-      document.getElementById("scanStatus").textContent = "Không thể mở camera: " + e.message;
+      document.getElementById("scanStatus").textContent = "Lỗi camera: " + e.message;
     }
   };
 
   window.stopScan = function() {
     if (scanInterval) { clearInterval(scanInterval); scanInterval = null; }
     if (scanStream) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; }
+    if (window._zxingReader) { try { window._zxingReader.reset(); } catch(e){} window._zxingReader = null; }
   };
 
   function onBarcodeFound(code) {
