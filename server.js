@@ -1,16 +1,16 @@
 const express = require("express");
 const path = require("path");
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
-// Serve static files
 app.use(express.static(path.join(__dirname)));
 
-// All routes -> index.html
-app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "index.html"));
-});
+app.get("/dashboard", (req, res) => res.sendFile(path.join(__dirname, "dashboard.html")));
+app.get("/sales", (req, res) => res.sendFile(path.join(__dirname, "sales.html")));
+app.get("/inventory", (req, res) => res.sendFile(path.join(__dirname, "inventory.html")));
+app.get("/debt", (req, res) => res.sendFile(path.join(__dirname, "debt.html")));
+app.get("/report", (req, res) => res.sendFile(path.join(__dirname, "report.html")));
 
-app.listen(PORT, () => {
-  console.log(`✅ Shop Manager chạy tại port ${PORT}`);
-});
+app.get("*", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
+
+app.listen(PORT, () => console.log(`✅ Shop Manager chạy tại port ${PORT}`));
