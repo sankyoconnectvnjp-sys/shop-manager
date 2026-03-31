@@ -487,7 +487,10 @@ body {
       <a href="/dashboard.html" style="text-decoration:none;font-size:22px;margin-right:4px;">←</a>
       <div class="top-bar-title">📦 Kho Hàng</div>
     </div>
-    <button class="btn btn-primary btn-sm" id="btnAdd">+ Thêm hàng</button>
+    <div style="display:flex;gap:8px;">
+      <a href="/suppliers.html" style="text-decoration:none;"><button class="btn btn-sm" style="background:#eff6ff;color:var(--blue);">🏪 NCC</button></a>
+      <button class="btn btn-primary btn-sm" id="btnAdd">+ Thêm hàng</button>
+    </div>
   </div>
 
   <div class="page-content">
@@ -583,8 +586,9 @@ body {
           <input type="text" id="fCategory" placeholder="Áo, Quần, Váy..."/>
         </div>
         <div class="field">
-          <label>Số lượng</label>
+          <label>Số lượng nhập</label>
           <input type="number" id="fQty" min="0" placeholder="0"/>
+          <div id="fQtyHint" style="display:none;font-size:11px;color:var(--primary);margin-top:4px;font-weight:600;"></div>
         </div>
       </div>
       <div class="field-row">
@@ -596,6 +600,12 @@ body {
           <label>Giá bán (đ) *</label>
           <input type="number" id="fSellPrice" min="0" placeholder="0"/>
         </div>
+      </div>
+      <div class="field">
+        <label>Nhà cung cấp</label>
+        <select id="fSupplier" style="width:100%;padding:12px 14px;border:2px solid var(--border);border-radius:10px;font-family:var(--font);font-size:15px;background:white;outline:none;">
+          <option value="">-- Chọn nhà cung cấp --</option>
+        </select>
       </div>
       <div class="field">
         <label>Ghi chú</label>
@@ -660,6 +670,20 @@ body {
     document.getElementById("lightboxImg").src = src;
     lb.style.display = "flex";
   };
+
+  async function loadSupplierOptions(selected="") {
+    const snap = await getDocs(query(collection(db,"suppliers"), orderBy("name")));
+    const sel = document.getElementById("fSupplier");
+    sel.innerHTML = '<option value="">-- Chọn nhà cung cấp --</option>';
+    snap.forEach(d => {
+      const s = d.data();
+      const opt = document.createElement("option");
+      opt.value = d.id;
+      opt.textContent = s.name;
+      if (d.id === selected) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  }
 
   async function loadItems() {
     const snap = await getDocs(query(collection(db,"inventory"), orderBy("name")));
@@ -745,8 +769,12 @@ body {
     document.getElementById("btnDelete").style.display = "none";
     capturedPhoto = null;
     capturedBarcode = "";
+    window._isRestock = false;
+    window._prefillData = null;
+    document.getElementById("fQtyHint").style.display = "none";
     document.getElementById("step3Photo").style.display = "none";
     document.getElementById("barcodeInfo").style.display = "none";
+    loadSupplierOptions();
     showStep(1);
     document.getElementById("scannerWrap").style.display = "none";
     document.getElementById("modalItem").classList.add("open");
@@ -794,11 +822,27 @@ body {
     if (window._zxingReader) { try { window._zxingReader.reset(); } catch(e){} window._zxingReader = null; }
   };
 
-  function onBarcodeFound(code) {
+  async function onBarcodeFound(code) {
     capturedBarcode = code;
     document.getElementById("scannedCode").textContent = code;
-    // Go to photo step
-    startPhotoCamera();
+
+    // Tìm trong kho xem có hàng trùng mã không
+    const snap = await getDocs(query(collection(db,"inventory"), where("barcode","==",code)));
+    if (!snap.empty) {
+      const existing = snap.docs[0].data();
+      const existId = snap.docs[0].id;
+      // Tự điền thông tin cũ
+      window._prefillData = { ...existing, _id: existId };
+      const go = confirm(`✅ Tìm thấy: "${existing.name}"\nTồn kho hiện tại: ${existing.quantity}\n\nNhấn OK để nhập thêm hàng, Huỷ để bỏ qua`);
+      if (go) {
+        startPhotoCamera();
+      } else {
+        skipScan();
+      }
+    } else {
+      window._prefillData = null;
+      startPhotoCamera();
+    }
   }
 
   window.skipScan = function() {
@@ -856,6 +900,26 @@ body {
 
   function goToStep3() {
     showStep(3);
+    // Prefill nếu tìm thấy hàng cũ
+    if (window._prefillData) {
+      const p = window._prefillData;
+      document.getElementById("fName").value = p.name || "";
+      document.getElementById("fCategory").value = p.category || "";
+      document.getElementById("fCostPrice").value = p.costPrice || "";
+      document.getElementById("fSellPrice").value = p.sellPrice || "";
+      document.getElementById("fSupplier").value = p.supplier || "";
+      // Set qty to 0 so user enters how many to ADD
+      document.getElementById("fQty").value = "";
+      document.getElementById("fQtyHint").textContent = `Tồn kho hiện tại: ${p.quantity} — nhập số lượng muốn thêm`;
+      document.getElementById("fQtyHint").style.display = "block";
+      if (!capturedPhoto && p.photo) capturedPhoto = p.photo;
+      window._isRestock = true;
+      window._restockId = p._id;
+      window._restockQty = p.quantity;
+    } else {
+      document.getElementById("fQtyHint").style.display = "none";
+      window._isRestock = false;
+    }
     if (capturedPhoto) {
       document.getElementById("step3Img").src = capturedPhoto;
       document.getElementById("step3Photo").style.display = "block";
@@ -863,7 +927,6 @@ body {
     if (capturedBarcode) {
       document.getElementById("barcodeDisplay").textContent = capturedBarcode;
       document.getElementById("barcodeInfo").style.display = "block";
-      document.getElementById("fNote").value = capturedBarcode;
     } else {
       document.getElementById("barcodeInfo").style.display = "none";
     }
@@ -890,6 +953,9 @@ body {
       document.getElementById("step3Photo").style.display = "none";
     }
     document.getElementById("barcodeInfo").style.display = "none";
+    document.getElementById("fQtyHint").style.display = "none";
+    window._isRestock = false;
+    loadSupplierOptions(p.supplier || "");
     showStep(3);
     document.getElementById("modalItem").classList.add("open");
   };
@@ -920,6 +986,15 @@ body {
       if (editId) {
         await updateDoc(doc(db,"inventory",editId), data);
         toast("Đã cập nhật!");
+      } else if (window._isRestock && window._restockId) {
+        // Nhập thêm hàng cũ — cộng thêm số lượng
+        const addQty = qty;
+        await updateDoc(doc(db,"inventory",window._restockId), {
+          ...data,
+          quantity: (window._restockQty || 0) + addQty,
+          updatedAt: serverTimestamp()
+        });
+        toast(`✅ Đã nhập thêm ${addQty} vào kho!`);
       } else {
         data.createdAt = serverTimestamp();
         await addDoc(collection(db,"inventory"), data);
