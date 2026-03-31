@@ -587,70 +587,41 @@ body {
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-              const FIREBASE_CONFIG = {
-      apiKey: "AIzaSyCRgJ9qLFiwY-v6K9dvdgIZXnzPeIiwfDY",
-      authDomain: "quan-ao-manager.firebaseapp.com",
-      projectId: "quan-ao-manager",
-      storageBucket: "quan-ao-manager.firebasestorage.app",
-      messagingSenderId: "890329830315",
-      appId: "1:890329830315:web:bae03b04ef3af43cd6f8ee"
-    };
-  // ===== SHARED UTILITIES =====
+  import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+  import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, where, orderBy, limit, serverTimestamp, increment } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyCRgJ9qLFiwY-v6K9dvdgIZXnzPeIiwfDY",
+    authDomain: "quan-ao-manager.firebaseapp.com",
+    projectId: "quan-ao-manager",
+    storageBucket: "quan-ao-manager.firebasestorage.app",
+    messagingSenderId: "890329830315",
+    appId: "1:890329830315:web:bae03b04ef3af43cd6f8ee"
+  };
 
-function fmt(num) {
-  if (!num && num !== 0) return "0";
-  return Number(num).toLocaleString("vi-VN") + "đ";
-}
-
-function fmtNum(num) {
-  return Number(num || 0).toLocaleString("vi-VN");
-}
-
-function today() {
-  return new Date().toISOString().split("T")[0];
-}
-
-function fmtDate(dateStr) {
-  if (!dateStr) return "";
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("vi-VN");
-}
-
-function fmtDateTime(ts) {
-  if (!ts) return "";
-  const d = ts.toDate ? ts.toDate() : new Date(ts);
-  return d.toLocaleString("vi-VN", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" });
-}
-
-function showModal(id) {
-  document.getElementById(id).classList.add("open");
-}
-
-function hideModal(id) {
-  document.getElementById(id).classList.remove("open");
-}
-
-function toast(msg, type = "success") {
-  const el = document.createElement("div");
-  el.textContent = msg;
-  el.style.cssText = `
-    position:fixed; bottom:90px; left:50%; transform:translateX(-50%);
-    background:${type === "success" ? "#22c55e" : "#ef4444"};
-    color:white; padding:10px 20px; border-radius:20px;
-    font-family:'Be Vietnam Pro',sans-serif; font-size:14px; font-weight:600;
-    z-index:9999; box-shadow:0 4px 16px rgba(0,0,0,.2);
-    animation: fadeInUp .3s ease;
-  `;
-  document.body.appendChild(el);
-  setTimeout(() => el.remove(), 2500);
-}
-
-// nav highlight
-function setActiveNav(page) {
-  document.querySelectorAll(".nav-item").forEach(el => {
-    el.classList.toggle("active", el.dataset.page === page);
-  });
-}
+  function fmt(num) {
+    if (!num && num !== 0) return "0";
+    return Number(num).toLocaleString("vi-VN") + "đ";
+  }
+  function fmtNum(num) { return Number(num || 0).toLocaleString("vi-VN"); }
+  function today() { return new Date().toISOString().split("T")[0]; }
+  function fmtDate(dateStr) {
+    if (!dateStr) return "";
+    return new Date(dateStr).toLocaleDateString("vi-VN");
+  }
+  function fmtDateTime(ts) {
+    if (!ts) return "";
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleString("vi-VN", {day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
+  }
+  function toast(msg, type="success") {
+    const el = document.createElement("div");
+    el.textContent = msg;
+    el.style.cssText = `position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:${type==="success"?"#22c55e":"#ef4444"};color:white;padding:10px 20px;border-radius:20px;font-family:'Be Vietnam Pro',sans-serif;font-size:14px;font-weight:600;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.2);`;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 2500);
+  }
+  function showModal(id) { document.getElementById(id).classList.add("open"); }
+  function hideModal(id) { document.getElementById(id).classList.remove("open"); }
 
 
   const app = initializeApp(FIREBASE_CONFIG);
